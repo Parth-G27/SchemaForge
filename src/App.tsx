@@ -23,6 +23,8 @@ import "reactflow/dist/style.css";
 import { v4 as uuidv4 } from "uuid";
 import { toPng } from 'html-to-image';
 
+import ProjectTitle from './components/projectTitle';
+
 
 
 // Custom Node Component with adjusted sizing
@@ -217,13 +219,7 @@ export default function SchemaCanvas() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="text-center">
-          <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 mb-1">
-            Database Schema Designer
-          </h1>
-          <p className="text-gray-600 mb-6">Design your database schema visually</p>
-        </div>
-
+        <ProjectTitle/>
         <div className="flex justify-center gap-4 mb-6">
           <button
             onClick={addTable}
