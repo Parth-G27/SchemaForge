@@ -1,5 +1,5 @@
 import './App.css';
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import ReactFlow, {
   Controls,
   Background,
@@ -14,29 +14,41 @@ import ReactFlow, {
   EdgeChange,
   Handle,
   Position,
+  ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { v4 as uuidv4 } from "uuid";
 import html2canvas from "html2canvas";
 
-// Custom Node Component
+// Custom Node Component with adjusted sizing
 const TableNode = ({ data }: { data: { label: string; fields: string[] } }) => (
-  <div className="bg-white rounded-lg shadow-lg border border-gray-200 min-w-[200px]">
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-t-lg">
-      <div className="text-white font-semibold text-lg truncate">{data.label}</div>
+  <div className="node-container" style={{ width: '160px', margin: '-8px' }}>  {/* Negative margin to fit within ReactFlow bounds */}
+    <div className="bg-white rounded-md shadow-sm border border-gray-200">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-1.5 rounded-t-md">
+        <div className="text-white font-medium text-xs truncate px-1">{data.label}</div>
+      </div>
+      <div className="p-1.5 space-y-1">
+        {data.fields.filter(field => field.trim() !== "").map((field, index) => (
+          <div key={index} className="text-gray-700 text-xs py-0.5 px-1.5 bg-gray-50 rounded border border-gray-100 flex items-center truncate">
+            <span className="w-1 h-1 bg-green-400 rounded-full mr-1.5 flex-shrink-0"></span>
+            <span className="truncate">{field}</span>
+          </div>
+        ))}
+      </div>
     </div>
-    <div className="p-3 space-y-2">
-      {data.fields.filter(field => field.trim() !== "").map((field, index) => (
-        <div key={index} className="text-gray-700 text-sm py-1 px-2 bg-gray-50 rounded border border-gray-100 flex items-center">
-          <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-          {field}
-        </div>
-      ))}
-    </div>
-    <Handle type="target" position={Position.Left} className="w-3 h-3 border-2" />
-    <Handle type="source" position={Position.Right} className="w-3 h-3 border-2" />
+    <Handle 
+      type="target" 
+      position={Position.Left} 
+      className="!w-2 !h-2 !-left-1 !border-2" 
+    />
+    <Handle 
+      type="source" 
+      position={Position.Right} 
+      className="!w-2 !h-2 !-right-1 !border-2" 
+    />
   </div>
 );
+
 
 const nodeTypes = {
   default: TableNode,
@@ -51,7 +63,7 @@ export default function SchemaCanvas() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [tableName, setTableName] = useState("");
   const [fields, setFields] = useState<string[]>([""]);
-  const flowRef = useRef<HTMLDivElement>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -62,6 +74,11 @@ export default function SchemaCanvas() {
     (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     []
   );
+
+  const onInit = (reactFlowInstance: ReactFlowInstance) => {
+    // console.log(reactFlowInstance);
+    setReactFlowInstance(reactFlowInstance);
+  };
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -84,13 +101,14 @@ export default function SchemaCanvas() {
     const newNode: Node = {
       id: uuidv4(),
       type: "default",
-      position: { x: Math.random() * 600, y: Math.random() * 400 },
+      position: { x: Math.random() * 400, y: Math.random() * 300 },
       data: { label: `New Table`, fields: [] },
     };
     setNodes((nds) => [...nds, newNode]);
   };
 
   const handleTableSelect = (node: Node) => {
+    console.log(reactFlowInstance);
     setSelectedNode(node);
     setTableName(node.data.label);
     setFields(node.data.fields || [""]);
@@ -111,22 +129,60 @@ export default function SchemaCanvas() {
   };
 
   const exportImage = async () => {
-    if (!flowRef.current) return;
-
     try {
-      const flowElement = flowRef.current;
-      const originalBackground = flowElement.style.background;
-      flowElement.style.background = 'white';
-
-      const canvas = await html2canvas(flowElement, {
+      // Get the ReactFlow viewport element
+      const reactFlowElement = document.querySelector('.react-flow__viewport');
+      if (!reactFlowElement) {
+        throw new Error('Flow element not found');
+      }
+  
+      // Calculate the content bounds
+      const nodes = document.querySelectorAll('.react-flow__node');
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      
+      nodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        minX = Math.min(minX, rect.left);
+        minY = Math.min(minY, rect.top);
+        maxX = Math.max(maxX, rect.right);
+        maxY = Math.max(maxY, rect.bottom);
+      });
+  
+      // Add padding
+      const padding = 50;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+  
+      // Create a temporary container
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '0';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = `${maxX - minX}px`;
+      tempContainer.style.height = `${maxY - minY}px`;
+      tempContainer.style.background = 'white';
+      document.body.appendChild(tempContainer);
+  
+      // Clone the ReactFlow content
+      const clone = reactFlowElement.cloneNode(true) as HTMLElement;
+      clone.style.transform = `translate(${-minX}px, ${-minY}px)`;
+      tempContainer.appendChild(clone);
+  
+      // Capture the image
+      const canvas = await html2canvas(tempContainer, {
         backgroundColor: '#ffffff',
-        useCORS: true,
         scale: 2,
         logging: false,
+        allowTaint: true,
+        foreignObjectRendering: true,
       });
-
-      flowElement.style.background = originalBackground;
-
+  
+      // Clean up
+      document.body.removeChild(tempContainer);
+  
+      // Download the image
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `schema-${new Date().toISOString().split('T')[0]}.png`;
@@ -137,6 +193,7 @@ export default function SchemaCanvas() {
       alert('Failed to export image. Please try again.');
     }
   };
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-6">
@@ -166,35 +223,35 @@ export default function SchemaCanvas() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 h-[70vh] overflow-hidden">
-          <div ref={flowRef} className="w-full h-full">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={(event, node) => handleTableSelect(node)}
-              nodeTypes={nodeTypes}
-              fitView
-              minZoom={0.1}
-              maxZoom={1.5}
-              defaultEdgeOptions={{
-                type: 'smoothstep',
-                style: { strokeWidth: 2 },
-                animated: true,
-              }}
-            >
-              <MiniMap
-                className="bg-white rounded-lg shadow-lg border border-gray-200"
-                nodeColor={() => '#6366f1'}
-                maskColor="rgba(255, 255, 255, 0.8)"
-              />
-              <Controls className="bg-white rounded-lg shadow-lg border border-gray-200" />
-              <Background color="#e2e8f0" gap={16} size={1} />
-            </ReactFlow>
-          </div>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={(event, node) => handleTableSelect(node)}
+            nodeTypes={nodeTypes}
+            onInit={onInit}
+            fitView
+            minZoom={0.1}
+            maxZoom={1.5}
+            defaultEdgeOptions={{
+              type: 'smoothstep',
+              style: { strokeWidth: 2 },
+              animated: true,
+            }}
+          >
+            <MiniMap
+              className="bg-white rounded-lg shadow-lg border border-gray-200"
+              nodeColor={() => '#6366f1'}
+              maskColor="rgba(255, 255, 255, 0.8)"
+            />
+            <Controls className="bg-white rounded-lg shadow-lg border border-gray-200" />
+            <Background color="#e2e8f0" gap={16} size={1} />
+          </ReactFlow>
         </div>
 
+        {/* Edit Panel - Same as before */}
         {selectedNode && (
           <div className="fixed top-24 right-6 bg-white rounded-xl shadow-2xl border border-gray-200 p-6 w-96 animate-fade-in">
             <div className="flex justify-between items-center mb-4">
