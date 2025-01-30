@@ -1,5 +1,5 @@
 import './App.css';
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import ReactFlow, {
   Controls,
   Background,
@@ -15,10 +15,15 @@ import ReactFlow, {
   Handle,
   Position,
   ReactFlowInstance,
+  getRectOfNodes,
+  getTransformForBounds,
+  // Panel
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { v4 as uuidv4 } from "uuid";
-import html2canvas from "html2canvas";
+import { toPng } from 'html-to-image';
+
+
 
 // Custom Node Component with adjusted sizing
 const TableNode = ({ data }: { data: { label: string; fields: string[] } }) => (
@@ -64,6 +69,8 @@ export default function SchemaCanvas() {
   const [tableName, setTableName] = useState("");
   const [fields, setFields] = useState<string[]>([""]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const flowRef = useRef<HTMLDivElement>(null);
+
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -75,10 +82,9 @@ export default function SchemaCanvas() {
     []
   );
 
-  const onInit = (reactFlowInstance: ReactFlowInstance) => {
-    // console.log(reactFlowInstance);
-    setReactFlowInstance(reactFlowInstance);
-  };
+  const onInit = (instance: ReactFlowInstance) => {
+      setReactFlowInstance(instance);
+    };
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -128,78 +134,91 @@ export default function SchemaCanvas() {
     setFields([""]);
   };
 
-  const exportImage = async () => {
+  const downloadImage = async () => {
+    if (!reactFlowInstance || !flowRef.current) {
+      console.error('Flow instance or ref not found');
+      return;
+    }
+  
     try {
-      // Get the ReactFlow viewport element
-      const reactFlowElement = document.querySelector('.react-flow__viewport');
-      if (!reactFlowElement) {
-        throw new Error('Flow element not found');
+      // Get the flow element
+      const flowElement = flowRef.current;
+  
+      // Get the viewport element
+      const viewportElement = flowElement.querySelector('.react-flow__viewport');
+      if (!viewportElement) {
+        console.error('Viewport element not found');
+        return;
       }
   
-      // Calculate the content bounds
-      const nodes = document.querySelectorAll('.react-flow__node');
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      // Calculate bounds
+      const nodes = reactFlowInstance.getNodes();
+      // const edges = reactFlowInstance.getEdges();
+      const nodesBounds = getRectOfNodes(nodes);
       
-      nodes.forEach((node) => {
-        const rect = node.getBoundingClientRect();
-        minX = Math.min(minX, rect.left);
-        minY = Math.min(minY, rect.top);
-        maxX = Math.max(maxX, rect.right);
-        maxY = Math.max(maxY, rect.bottom);
-      });
-  
-      // Add padding
+      // Add padding to the bounds
       const padding = 50;
-      minX -= padding;
-      minY -= padding;
-      maxX += padding;
-      maxY += padding;
+      const width = nodesBounds.width + padding * 2;
+      const height = nodesBounds.height + padding * 2;
   
-      // Create a temporary container
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '0';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = `${maxX - minX}px`;
-      tempContainer.style.height = `${maxY - minY}px`;
-      tempContainer.style.background = 'white';
-      document.body.appendChild(tempContainer);
+      // Get the transform for the bounds
+      const transform = getTransformForBounds(
+        nodesBounds,
+        width,
+        height,
+        0.5,
+        padding
+      );
   
-      // Clone the ReactFlow content
-      const clone = reactFlowElement.cloneNode(true) as HTMLElement;
-      clone.style.transform = `translate(${-minX}px, ${-minY}px)`;
-      tempContainer.appendChild(clone);
+      // Configure html-to-image options
+      const options = {
+        backgroundColor: '#ffffff',
+        width: width,
+        height: height,
+        style: {
+          width: `${width}px`,
+          height: `${height}px`,
+          transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
+        },
+        quality: 2,
+        pixelRatio: 2,
+        skipAutoScale: true,
+        fontEmbedCSS: '',
+      };
+  
+      // First, modify the viewport for capture
+      const originalTransform = (viewportElement as HTMLElement).style.transform;
+      const originalWidth = (viewportElement as HTMLElement).style.width;
+      const originalHeight = (viewportElement as HTMLElement).style.height;
+  
+      (viewportElement as HTMLElement).style.width = `${width}px`;
+      (viewportElement as HTMLElement).style.height = `${height}px`;
+      (viewportElement as HTMLElement).style.transform = `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`;
   
       // Capture the image
-      const canvas = await html2canvas(tempContainer, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        allowTaint: true,
-        foreignObjectRendering: true,
-      });
+      const dataUrl = await toPng(viewportElement as HTMLElement, options);
   
-      // Clean up
-      document.body.removeChild(tempContainer);
+      // Restore original viewport styles
+      (viewportElement as HTMLElement).style.transform = originalTransform;
+      (viewportElement as HTMLElement).style.width = originalWidth;
+      (viewportElement as HTMLElement).style.height = originalHeight;
   
-      // Download the image
-      const dataUrl = canvas.toDataURL('image/png');
+      // Create and trigger download
       const link = document.createElement('a');
-      link.download = `schema-${new Date().toISOString().split('T')[0]}.png`;
       link.href = dataUrl;
+      link.download = `schema-${new Date().toISOString().split('T')[0]}.png`;
       link.click();
     } catch (error) {
       console.error('Error exporting image:', error);
       alert('Failed to export image. Please try again.');
     }
   };
-  
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="text-center">
-          <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 mb-2">
+          <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 mb-1">
             Database Schema Designer
           </h1>
           <p className="text-gray-600 mb-6">Design your database schema visually</p>
@@ -214,7 +233,7 @@ export default function SchemaCanvas() {
             Add Table
           </button>
           <button
-            onClick={exportImage}
+            onClick={downloadImage}
             className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
           >
             <span>⬇</span>
@@ -223,32 +242,34 @@ export default function SchemaCanvas() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 h-[70vh] overflow-hidden">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={(event, node) => handleTableSelect(node)}
-            nodeTypes={nodeTypes}
-            onInit={onInit}
-            fitView
-            minZoom={0.1}
-            maxZoom={1.5}
-            defaultEdgeOptions={{
-              type: 'smoothstep',
-              style: { strokeWidth: 2 },
-              animated: true,
-            }}
-          >
-            <MiniMap
-              className="bg-white rounded-lg shadow-lg border border-gray-200"
-              nodeColor={() => '#6366f1'}
-              maskColor="rgba(255, 255, 255, 0.8)"
-            />
-            <Controls className="bg-white rounded-lg shadow-lg border border-gray-200" />
-            <Background color="#e2e8f0" gap={16} size={1} />
-          </ReactFlow>
+          <div ref={flowRef} className="w-full h-full">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={(event, node) => handleTableSelect(node)}
+              nodeTypes={nodeTypes}
+              onInit={onInit}
+              fitView
+              minZoom={0.1}
+              maxZoom={1.5}
+              defaultEdgeOptions={{
+                type: 'smoothstep',
+                style: { strokeWidth: 2 },
+                animated: true,
+              }}
+            >
+              <MiniMap
+                className="bg-white rounded-lg shadow-lg border border-gray-200"
+                nodeColor={() => '#6366f1'}
+                maskColor="rgba(255, 255, 255, 0.8)"
+              />
+              <Controls className="bg-white rounded-lg shadow-lg border border-gray-200" />
+              <Background color="#e2e8f0" gap={16} size={1} />
+            </ReactFlow>
+          </div>
         </div>
 
         {/* Edit Panel - Same as before */}
