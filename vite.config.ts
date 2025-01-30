@@ -6,7 +6,7 @@ import path from "path"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(),tailwindcss(),],
-  base: "/schema-forge/", // YOUR REPO NAME HERE
+  base: "/schema-forge", // YOUR REPO NAME HERE
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

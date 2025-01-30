@@ -1,5 +1,5 @@
 import './App.css';
-import React, { useState, useCallback, useRef } from "react";
+import  { useState, useCallback, useRef } from "react";
 import ReactFlow, {
   Controls,
   Background,
@@ -245,7 +245,7 @@ export default function SchemaCanvas() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onNodeClick={(event, node) => handleTableSelect(node)}
+              onNodeClick={(_, node) => handleTableSelect(node)}
               nodeTypes={nodeTypes}
               onInit={onInit}
               fitView
